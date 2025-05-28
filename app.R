@@ -120,7 +120,7 @@ ui <- page_navbar(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  
+  track_usage(storage_mode = store_json(path = "logs/"))
   # Change page ----
   observeEvent(input$page_change, {
     updateNavlistPanel(
@@ -136,7 +136,7 @@ server <- function(input, output) {
     setView(11.764443365420146,55.95939198374305, zoom = 7) %>% 
     addProviderTiles(providers$CartoDB.Positron) %>% 
     addCircleMarkers(data = leaf_points, lng = ~long, lat = ~lat,stroke =F, radius = 4,label = ~Stedtekst,color = "black", fillOpacity = 1,layerId = ~StedID) %>% 
-    addPolygons(data = leaf_lakes, label = ~Stedtekst, stroke = F, fillColor = "royalblue", fillOpacity = 1, layerId = ~StedID)
+    addPolygons(data = leaf_lakes, label = ~Stedtekst, stroke = F, fillColor = "royalblue", fillOpacity = 1, layerId = ~gml_id)
   })
   # Environmental data ----
   ## Read in chemistry data for the specified lake ----
@@ -147,16 +147,21 @@ server <- function(input, output) {
   })
   
   observeEvent(input$lake_picker_map_shape_click, {
-    values$select_id <- input$lake_picker_map_shape_click$id  
+    leaf_lakes %>% 
+      filter(gml_id == input$lake_picker_map_shape_click$id) %>% 
+      pull(StedID) -> values$select_id 
+  
+  print(values$select_id)
     })
   
  filtered_data <- reactive({
    req(values$select_id)
+   
 
     fread("chemistry_data.csv", sep = ";", dec = ",",
           select = c("StedID","Stedtekst","Vandområde","Dato","Link","Prøvetype","Dybde (m)",
                      "Faktiske dybder (m)","Analysefraktion","Stofparameter","Resultat-attribut",
-                     "Resultat","Enhed","Detektionsgrænse LD","Kvantifikationsgrænse LQ","Kvalitetsmærke"))[StedID == values$select_id] %>% 
+                     "Resultat","Enhed","Detektionsgrænse LD","Kvantifikationsgrænse LQ","Kvalitetsmærke"))[StedID %in% values$select_id] %>% 
       .[, c("Dato","parameter_unit") := .(dmy_hms(Dato), paste0(Stofparameter," (",Enhed,")"))] -> filtered_data
     
     updateCheckboxGroupInput(inputId = "analysis_plot_select", choices = sort(unique(filtered_data[,Stofparameter])))
