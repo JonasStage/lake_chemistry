@@ -79,7 +79,8 @@ ui <- page_navbar(
                  </p>
                  "
                 ),
-            leafletOutput("lake_picker_map", width = "100%", height = "120vh"),
+            leafletOutput("lake_picker_map", height = "100%",width = "100%"),
+            tags$script('$(".sidebar-toggle").on("click", function() { $(this).trigger("shown"); });'),
             actionButton("page_change",label="Når du har valgt en sø, kan du skifte til grafisk fremstilling ved at trykke her."),
             HTML("
                  <p>
@@ -133,7 +134,6 @@ server <- function(input, output) {
   # Lake picker ----
   output$lake_picker_map <- renderLeaflet({
   leaflet() %>% 
-    setView(11.764443365420146,55.95939198374305, zoom = 7) %>% 
     addProviderTiles(providers$CartoDB.Positron) %>% 
     addCircleMarkers(data = leaf_points, lng = ~long, lat = ~lat,stroke =F, radius = 4,label = ~Stedtekst,color = "black", fillOpacity = 1,layerId = ~StedID) %>% 
     addPolygons(data = leaf_lakes, label = ~Stedtekst, stroke = F, fillColor = "royalblue", fillOpacity = 1, layerId = ~gml_id)
@@ -176,12 +176,10 @@ server <- function(input, output) {
 
  output$chem_plot_output <- renderPlot({
    req(input$analysis_plot_select)
-   
-   labels <- filtered_data() %>% 
-     distinct(Enhed, Stofparameter)
-   
-   labels$Enhed -> units_df
-   names(units_df) <- labels$Stofparameter 
+  
+   filtered_data() %>% 
+     distinct(Stedtekst) %>% 
+     pull(Stedtekst) -> title_pull
    
    filtered_data() %>% 
      filter(Stofparameter %in% input$analysis_plot_select & 
@@ -193,9 +191,11 @@ server <- function(input, output) {
      facet_grid(parameter_unit~1, scales = "free_y", switch = "y")  +
      theme(strip.placement = "outside", 
            strip.background = element_blank(),
-           strip.text.x = element_blank()) + 
+           strip.text.x = element_blank(),
+           title = element_text(size = 18)) + 
      labs(x= "Dato",
-          y = "")-> chem_plot
+          y = "",
+          title = title_pull)-> chem_plot
    
    print(chem_plot)
  })
