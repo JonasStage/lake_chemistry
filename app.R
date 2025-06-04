@@ -103,6 +103,8 @@ ui <- page_navbar(
             layout_sidebar(
               sidebar = sidebar(
               checkboxGroupInput("analysis_plot_select", "Vælg stofparametre at undersøge:"),
+              checkboxGroupInput("prøvetype_select", "Vælg hvilken prøvetype du vil inkludere i dataet:"),
+              sliderInput("depth_plot_select", "Vælg vanddybder at undersøge:", min =0, max =100, value =c(0,100)),
               sliderInput("chemistry_year_select", "Vælg tidsintervallet at undersøge:", min = 1900, max = 2025,value = c(1900,2025), sep = "")
                              ),
               plotOutput("chem_plot_output")
@@ -150,8 +152,6 @@ server <- function(input, output) {
     leaf_lakes %>% 
       filter(gml_id == input$lake_picker_map_shape_click$id) %>% 
       pull(StedID) -> values$select_id 
-  
-  print(values$select_id)
     })
   
  filtered_data <- reactive({
@@ -162,28 +162,39 @@ server <- function(input, output) {
           select = c("StedID","Stedtekst","Vandområde","Dato","Link","Prøvetype","Dybde (m)",
                      "Faktiske dybder (m)","Analysefraktion","Stofparameter","Resultat-attribut",
                      "Resultat","Enhed","Detektionsgrænse LD","Kvantifikationsgrænse LQ","Kvalitetsmærke"))[StedID %in% values$select_id] %>% 
-      .[, c("Dato","parameter_unit") := .(dmy_hms(Dato), paste0(Stofparameter," (",Enhed,")"))] -> filtered_data
+      .[, c("Dato","parameter_unit","Dybde (m)") := .(dmy_hms(Dato), paste0(Stofparameter," (",Enhed,")"),round(`Dybde (m)`,2))] -> filtered_data
     
     updateCheckboxGroupInput(inputId = "analysis_plot_select", choices = sort(unique(filtered_data[,Stofparameter])))
+    updateCheckboxGroupInput(inputId = "prøvetype_select", choices = sort(unique(filtered_data[,Prøvetype])), selected = unique(filtered_data[,Prøvetype]))
+    updateSliderInput(inputId = "depth_plot_select", min = min(filtered_data[,`Dybde (m)`]), max = max(filtered_data[,`Dybde (m)`]))
     updateSliderInput(inputId = "chemistry_year_select", min = year(min(filtered_data[,Dato])), max = year(max(filtered_data[,Dato])))
     
     return(filtered_data)
   })
   
- output$outText <- renderDataTable(filtered_data()[, .(Vandområde,Dato = as.Date(Dato),Prøvetype, `Dybde (m)` = round(`Dybde (m)`,2), Stofparameter= as.factor(Stofparameter),`Resultat-attribut`, Resultat, Enhed)], filter = "top")
+ output$outText <- renderDataTable(filtered_data()[, .(Vandområde,Dato = as.Date(Dato),Prøvetype, `Dybde (m)`, Stofparameter= as.factor(Stofparameter),`Resultat-attribut`, Resultat, Enhed)], filter = "top")
  
  # Plotting items ----
 
  output$chem_plot_output <- renderPlot({
    req(input$analysis_plot_select)
   
-   filtered_data() %>% 
-     distinct(Stedtekst) %>% 
-     pull(Stedtekst) -> title_pull
    
    filtered_data() %>% 
-     filter(Stofparameter %in% input$analysis_plot_select & 
-            between(year(Dato), input$chemistry_year_select[1], input$chemistry_year_select[2])) %>% 
+     distinct(Vandområde) %>% 
+     pull(Vandområde) -> title_pull
+   
+   filtered_data() %>% 
+     filter(Stofparameter %in% input$analysis_plot_select ,
+            between(year(Dato), input$chemistry_year_select[1], input$chemistry_year_select[2]) ,
+            between(`Dybde (m)`, input$depth_plot_select[1],input$depth_plot_select[2])  ,
+            Prøvetype %in% input$prøvetype_select) -> plot_data
+   
+   if (nrow(plot_data) == 0) {
+     validate("Der er ingen observationer. Prøv at ændre stofparametre, prøvetype, dybde eller årrække.")
+   }
+   
+   plot_data %>% 
      ggplot(aes(Dato, Resultat)) + 
      geom_point(size = 3, shape = 21,aes(fill = Stofparameter)) + 
      geom_line(aes(col = Stofparameter)) + 
